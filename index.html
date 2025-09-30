@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>InfOne · Wizard de Desvíos</title>
+  <meta name="description" content="Asistente de desvíos de llamadas — InfOne"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>html,body{height:100%}</style>
+</head>
+<body class="min-h-screen bg-slate-100">
+  <div id="root"></div>
+  <!-- React 18 UMD -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel for JSX in-browser (simple deploy) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const onlyDigits = (s) => s.replace(/[^0-9]/g, "");
+    const isNine = (n) => /^\d{9}$/.test(n);
+    const e164 = (n9) => `+34${n9}`;
+    const copyToClipboard = (t) => navigator.clipboard && navigator.clipboard.writeText(t).catch(()=>{});
+
+    const baseIcon = (p)=> ({
+      width: p.size || 18, height: p.size || 18, viewBox: "0 0 24 24", fill: "none",
+      stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round",
+      className: p.className || ""
+    });
+    const Phone = (p) => (<svg {...baseIcon(p)}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.86 19.86 0 0 1-8.63-3.07A19.5 19.5 0 0 1 3.15 9.81 19.86 19.86 0 0 1 .08 1.18 2 2 0 0 1 2.06 0h3a2 2 0 0 1 2 1.72c.12.9.32 1.78.59 2.63a2 2 0 0 1-.45 2.11L6.37 8.09a16 16 0 0 0 6.54 6.54l1.63-1.83a2 2 0 0 1 2.11-.45c.85.27 1.73.47 2.63.59A2 2 0 0 1 22 16.92z"/></svg>);
+    const PhoneIncoming = (p) => (<svg {...baseIcon(p)}><polyline points="16 2 16 8 22 8"></polyline><line x1="23" y1="1" x2="16" y2="8"></line><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.86 19.86 0 0 1-8.63-3.07A19.5 19.5 0 0 1 3.15 9.81 19.86 19.86 0 0 1 .08 1.18 2 2 0 0 1 2.06 0h3a2 2 0 0 1 2 1.72c.12.9.32 1.78.59 2.63a2 2 0 0 1-.45 2.11L6.37 8.09a16 16 0 0 0 6.54 6.54l1.63-1.83a2 2 0 0 1 2.11-.45c.85.27 1.73.47 2.63.59A2 2 0 0 1 22 16.92z"/></svg>);
+    const PhoneOff = (p) => (<svg {...baseIcon(p)}><line x1="1" y1="1" x2="23" y2="23"></line><path d="M10.68 13.31a16 16 0 0 1-4-4l2-2a2 2 0 0 0 .45-2.11 13.31 13.31 0 0 1-.59-2.63A2 2 0 0 0 6.54 1H3.5A2.5 2.5 0 0 0 1 3.5 19.5 19.5 0 0 0 20.5 23a2.5 2.5 0 0 0 2.5-2.5v-3a2 2 0 0 0-1.72-2c-.9-.12-1.78-.32-2.63-.59a2 2 0 0 0-2.11.45l-2 2a16 16 0 0 1-4-4z"/></svg>);
+
+    const GSM = {
+      on: {
+        siempre: (num9) => `**21*${num9}#`,
+        ocupado: (num9) => `**67*${num9}#`,
+        no_contesta: (num9, s) => `**61*${num9}*${s}#`,
+        apagado: (num9) => `**62*${num9}#`,
+      },
+      check: { siempre: "*#21#", ocupado: "*#67#", no_contesta: "*#61#", apagado: "*#62#" },
+      offAll: "##002#",
+      off: { siempre: "##21#", ocupado: "##67#", no_contesta: "##61#", apagado: "##62#" },
+    };
+
+    const PSTN = {
+      on: {
+        siempre: (num9) => `*21*${num9}#`,
+        ocupado: (num9) => `*67*${num9}#`,
+        no_contesta: (num9) => `*61*${num9}#`,
+        apagado: (num9) => `*62*${num9}#`,
+        condComp: (num9) => `*004*${num9}#`,
+      },
+      offAll: "##002#",
+      off: { siempre: "#21#", ocupado: "#67#", no_contesta: "#61#", apagado: "#62#", condComp: "#004#" },
+    };
+
+    const overrides = {
+      Orange: {
+        fijo: {
+          directo: {
+            on: { siempre: (n) => `*21${n}`, ocupado: (n) => `*22${n}`, no_contesta: (n) => `*23${n}` },
+            off: { siempre: "*211*", ocupado: "*221*", no_contesta: "*231*" },
+          },
+          indirecto: {
+            on: { siempre: (n) => `*21*${n}#`, ocupado: (n) => `*67*${n}#`, no_contesta: (n) => `*61*${n}#` },
+            off: { siempre: "#21#", ocupado: "#67#", no_contesta: "#61#" },
+          },
+        },
+      },
+      Vodafone: { fijo: { desact: { siempre: "*210*", ocupado: "*670*", no_contesta: "*610*" } } },
+      Telecable: { fijo: { on: { siempre: (n) => `*70${n}`, ocupado: (n) => `*71${n}`, no_contesta: (n) => `*72${n}` }, off: { siempre: "#70", ocupado: "#71", no_contesta: "#72" } } },
+      Jazztel: {
+        fijo: {
+          directo: { on: { siempre: (n) => `*21${n}#`, ocupado: (n) => `*67${n}#`, no_contesta: (n) => `*61${n}#` }, off: { siempre: "#21", ocupado: "#67", no_contesta: "#61" } },
+          indirecto: { on: { siempre: (n) => `*21*${n}#`, ocupado: (n) => `*67*${n}#`, no_contesta: (n) => `*61*${n}#` }, off: { siempre: "#21#", ocupado: "#67#", no_contesta: "#61#" } },
+        },
+      },
+      Adamo: { fijo: { on: { siempre: (n) => `*22*${n}` }, off: { siempre: "#22" } } },
+      "PTV Telecom": { requiereAutorizacion: true },
+      "O2 (Movistar)": { alias: "Movistar" },
+    };
+
+    const OPERATORS = [
+      "Movistar", "O2 (Movistar)", "Orange", "Vodafone", "Yoigo", "DIGI", "Telecable", "MásMóvil", "Jazztel", "Pepephone", "Simyo", "Lebara", "Euskaltel", "Lowi", "Adamo", "Finetwork", "PTV Telecom", "Otra (no está en la lista)",
+    ];
+
+    const Card = ({ children }) => (<div className="rounded-2xl border bg-white p-4 shadow-sm">{children}</div>);
+    const Tile = ({ title, code, emphasis=false }) => (
+      <div className={`rounded-xl border p-3 bg-white flex items-center justify-between ${emphasis? 'ring-2 ring-slate-900':''}`}>
+        <div>
+          <div className="text-sm text-slate-500">{title}</div>
+          <div className="font-mono text-base mt-1 select-all">{code}</div>
+        </div>
+      </div>
+    );
+
+    function Wizard(){
+      const [device, setDevice] = React.useState("movil");
+      const [operator, setOperator] = React.useState("Movistar");
+      const [installMode, setInstallMode] = React.useState("condicional");
+      const [segundos, setSegundos] = React.useState(15);
+      const [nLinea9, setNLinea9] = React.useState("");
+      const [nDestino9, setNDestino9] = React.useState("");
+      const [empresa, setEmpresa] = React.useState("");
+      const [cif, setCif] = React.useState("");
+      const [iphone, setIphone] = React.useState(false);
+      const [paso, setPaso] = React.useState(1);
+      const [dirLinea, setDirLinea] = React.useState("");
+
+      const valid = React.useMemo(() => isNine(nDestino9), [nDestino9]);
+      const numForCodes = nDestino9;
+      const numAndroidUI = e164(nDestino9);
+      const numLinea = nLinea9 ? e164(nLinea9) : "";
+
+      const movistarBody = `Buenos días,\n\n¿Serían tan amables de dar de alta el servicio de desvío de llamadas inmediato, ocupado y no contesta en la Línea telefónica ${numLinea || "[NÚMERO DEL CLIENTE A DESVIAR]"} ?\n\nLos datos de la empresa son los siguientes:\n- Denominación social: ${empresa || "[RAZÓN SOCIAL / NOMBRE SI AUTÓNOMO]"} \n- CIF: ${cif || "[BXXXXXXXXX]"} \n- Dirección: ${dirLinea || "[DIRECCIÓN DE LA LÍNEA TELEFÓNICA]"}\n\nGracias y quedo a la espera,`;
+      const mailHref = 'mailto:asesorpersonal@telefonica.es?subject=' + encodeURIComponent('Activar Desvíos') + '&body=' + encodeURIComponent(movistarBody);
+
+      const getOffCodes = () => {
+        if (device === "movil") return [
+          { label: "Quitar todo (reset)", code: GSM.offAll, emphasis: true },
+          { label: "Quitar siempre", code: GSM.off.siempre },
+          { label: "Quitar ocupado", code: GSM.off.ocupado },
+          { label: "Quitar no contesta", code: GSM.off.no_contesta },
+          { label: "Quitar apagado", code: GSM.off.apagado },
+        ];
+        if (operator === "Vodafone") { const d = overrides["Vodafone"].fijo.desact; return [
+          { label: "Quitar todo (reset)", code: PSTN.offAll, emphasis: true }, { label: "Quitar siempre (VF)", code: d.siempre }, { label: "Quitar ocupado (VF)", code: d.ocupado }, { label: "Quitar no contesta (VF)", code: d.no_contesta }, ]; }
+        if (operator === "Telecable") { const f = overrides["Telecable"].fijo.off; return [
+          { label: "Quitar todo (reset)", code: PSTN.offAll, emphasis: true }, { label: "Quitar siempre (Telecable)", code: f.siempre }, { label: "Quitar ocupado (Telecable)", code: f.ocupado }, { label: "Quitar no contesta (Telecable)", code: f.no_contesta }, ]; }
+        if (operator === "Adamo") { const f = overrides["Adamo"].fijo.off; return [
+          { label: "Quitar todo (reset)", code: PSTN.offAll, emphasis: true }, { label: "Quitar siempre (Adamo)", code: f.siempre }, { label: "Quitar ocupado (universal)", code: PSTN.off.ocupado }, { label: "Quitar no contesta (universal)", code: PSTN.off.no_contesta }, ]; }
+        if (operator === "Orange") { const d = overrides["Orange"].fijo.directo.off; const i = overrides["Orange"].fijo.indirecto.off; return [
+          { label: "Quitar todo (reset)", code: PSTN.offAll, emphasis: true }, { label: "Quitar SIEMPRE (Directo)", code: d.siempre }, { label: "Quitar OCUPADO (Directo)", code: d.ocupado }, { label: "Quitar NO CONTESTA (Directo)", code: d.no_contesta }, { label: "Quitar SIEMPRE (Indirecto)", code: i.siempre }, { label: "Quitar OCUPADO (Indirecto)", code: i.ocupado }, { label: "Quitar NO CONTESTA (Indirecto)", code: i.no_contesta }, ]; }
+        if (operator === "Jazztel") { const d = overrides["Jazztel"].fijo.directo.off; const i = overrides["Jazztel"].fijo.indirecto.off; return [
+          { label: "Quitar todo (reset)", code: PSTN.offAll, emphasis: true }, { label: "Quitar SIEMPRE (Directo)", code: d.siempre }, { label: "Quitar OCUPADO (Directo)", code: d.ocupado }, { label: "Quitar NO CONTESTA (Directo)", code: d.no_contesta }, { label: "Quitar SIEMPRE (Indirecto)", code: i.siempre }, { label: "Quitar OCUPADO (Indirecto)", code: i.ocupado }, { label: "Quitar NO CONTESTA (Indirecto)", code: i.no_contesta }, ]; }
+        return [
+          { label: "Quitar todo (reset)", code: PSTN.offAll, emphasis: true }, { label: "Quitar siempre (universal)", code: PSTN.off.siempre }, { label: "Quitar ocupado (universal)", code: PSTN.off.ocupado }, { label: "Quitar no contesta (universal)", code: PSTN.off.no_contesta }, { label: "Quitar apagado (universal)", code: PSTN.off.apagado }, { label: "Quitar compuesto (universal)", code: PSTN.off.condComp }, ];
+      };
+      const offCodes = React.useMemo(() => getOffCodes(), [device, operator]);
+
+      const titulo = "InfOne · Wizard de Desvíos";
+
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 text-slate-900 p-6">
+          <div className="max-w-4xl mx-auto space-y-6">
+            <div className="flex items-center justify-between">
+              <h1 className="text-xl md:text-2xl font-bold tracking-tight">{titulo}</h1>
+              <span className="text-xs text-slate-500">DEFINITIVO</span>
+            </div>
+
+            <div className="rounded-2xl border bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <PhoneOff className="text-slate-600" size={18}/>
+                <div className="font-medium">Quitar desvíos (rápido)</div>
+              </div>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {offCodes.map((o, i)=> (
+                  <Tile key={i} title={o.label} code={o.code} emphasis={!!o.emphasis} />
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-4"><span className="text-xs rounded-full bg-slate-900 text-white w-6 h-6 inline-flex items-center justify-center">1</span><div className="font-semibold">Datos básicos</div><div className="text-xs text-slate-500">(2–3 preguntas)</div></div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm text-slate-600 mb-2">Tipo de línea</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button aria-label="Seleccionar móvil" className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 ${device==='movil'?'bg-slate-900 text-white':'bg-white hover:bg-slate-50'}`} onClick={()=>{setDevice('movil');}}>
+                      <Phone size={16}/> Móvil
+                    </button>
+                    <button aria-label="Seleccionar fijo" className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 ${device==='fijo'?'bg-slate-900 text-white':'bg-white hover:bg-slate-50'}`} onClick={()=>{setDevice('fijo');}}>
+                      <PhoneIncoming size={16}/> Fijo
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm text-slate-600 mb-2">Operador</div>
+                  <select aria-label="Seleccionar operador" className="w-full rounded-xl border p-2 bg-white" value={operator} onChange={(e)=>setOperator(e.target.value)}>
+                    {OPERATORS.map(op=> <option key={op} value={op}>{op}</option>)}
+                  </select>
+                  {operator === "Otra (no está en la lista)" && (
+                    <div className="mt-2 text-xs p-3 rounded-xl border bg-amber-50 text-amber-900">
+                      Pide el nombre exacto y busca: <b>“[NOMBRE OPERADOR] desvío de llamadas {device==='fijo'?'fijo':'móvil'}”.</b> Mientras, usa los códigos universales que se muestran.
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="text-sm text-slate-600 mb-2">Preferencia del cliente</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button aria-label="Desviar todas" className={`rounded-xl border px-3 py-2 ${installMode==='todo'?'bg-slate-900 text-white':'bg-white hover:bg-slate-50'}`} onClick={()=>setInstallMode('todo')}>Desviar todas</button>
+                    <button aria-label="Solo cuando no pueda atender" className={`rounded-xl border px-3 py-2 ${installMode==='condicional'?'bg-slate-900 text-white':'bg-white hover:bg-slate-50'}`} onClick={()=>setInstallMode('condicional')}>Solo cuando no pueda atender</button>
+                  </div>
+                </div>
+
+                {installMode==='condicional' && (
+                  <div>
+                    <div className="text-sm text-slate-600 mb-2">Segundos “no contesta”</div>
+                    <input aria-label="Segundos no contesta" type="number" min={5} max={30} step={5} value={segundos} onChange={(e)=>setSegundos(Number(e.target.value)||15)} className="w-32 rounded-xl border p-2 bg-white" />
+                    <div className="text-xs text-slate-500 mt-1">Recomendado: 15–20s</div>
+                  </div>
+                )}
+
+                <div>
+                  <div className="text-sm text-slate-600 mb-2">Nº de línea del cliente (opcional)</div>
+                  <div className={`flex rounded-xl border overflow-hidden ${nLinea9 && !isNine(nLinea9)?'border-red-500':'border-slate-300'}`}>
+                    <span className="px-3 py-2 bg-slate-50 border-r select-none">+34</span>
+                    <input aria-label="Número de línea del cliente" inputMode="numeric" pattern="[0-9]*" maxLength={9} value={nLinea9} onChange={(e)=>setNLinea9(onlyDigits(e.target.value).slice(0,9))} placeholder="XXXXXXXXX" className="w-full p-2 outline-none bg-white" />
+                  </div>
+                  {nLinea9 && !isNine(nLinea9) && <div className="text-xs text-red-600 mt-1">Deben ser 9 dígitos.</div>}
+                </div>
+
+                <div>
+                  <div className="text-sm text-slate-600 mb-2">Nº destino (nº del asistente) <span className="text-red-600">*</span></div>
+                  <div className={`flex rounded-xl border overflow-hidden ${!isNine(nDestino9)?'border-red-500':'border-slate-300'}`}>
+                    <span className="px-3 py-2 bg-slate-50 border-r select-none">+34</span>
+                    <input aria-label="Número destino" inputMode="numeric" pattern="[0-9]*" maxLength={9} value={nDestino9} onChange={(e)=>setNDestino9(onlyDigits(e.target.value).slice(0,9))} placeholder="XXXXXXXXX" className="w-full p-2 outline-none bg-white" />
+                  </div>
+                  {!isNine(nDestino9) && <div className="text-xs text-red-600 mt-1">Deben ser 9 dígitos.</div>}
+                </div>
+
+                {device==='movil' && (
+                  <div>
+                    <div className="text-sm text-slate-600 mb-2">¿iPhone?</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button aria-label="No (Android)" onClick={()=>setIphone(false)} className={`rounded-xl border px-3 py-2 ${!iphone?'bg-slate-900 text-white':'bg-white hover:bg-slate-50'}`}>No (Android)</button>
+                      <button aria-label="Sí (iPhone)" onClick={()=>setIphone(true)} className={`rounded-xl border px-3 py-2 ${iphone?'bg-slate-900 text-white':'bg-white hover:bg-slate-50'}`}>Sí (iPhone)</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <button aria-label="Continuar a activación" disabled={!valid} onClick={()=>setPaso(2)} className={`px-4 py-2 rounded-xl ${valid?"bg-slate-900 text-white":"bg-slate-300 text-slate-500"}`}>Continuar</button>
+              </div>
+            </div>
+
+            {paso>=2 && (
+              <div className="rounded-2xl border bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-4"><span className="text-xs rounded-full bg-slate-900 text-white w-6 h-6 inline-flex items-center justify-center">2</span><div className="font-semibold">Activación</div><div className="text-xs text-slate-500">(marca códigos o configura en Ajustes)</div></div>
+
+                {device==='movil' && !iphone && (
+                  <div className="space-y-3 text-sm">
+                    <div className="p-3 rounded-xl border bg-slate-50">
+                      <div className="font-semibold mb-1">Android — Ajustes del teléfono</div>
+                      <ol className="list-decimal pl-5 space-y-1">
+                        <li>Abre la app <b>Teléfono</b> → <b>Ajustes</b> → <b>Desvío de llamadas</b>.</li>
+                        {installMode==='todo' ? (
+                          <li>Activa <b>Desviar siempre</b> y escribe <b>{numAndroidUI}</b>.</li>
+                        ) : (
+                          <>
+                            <li>Activa <b>Si ocupado</b> y escribe <b>{numAndroidUI}</b>.</li>
+                            <li>Activa <b>Si no contesta</b> y escribe <b>{numAndroidUI}</b>.</li>
+                            <li>Activa <b>Si apagado/fuera de cobertura</b> y escribe <b>{numAndroidUI}</b>.</li>
+                          </>
+                        )}
+                        <li>Guarda y haz una llamada de prueba.</li>
+                      </ol>
+                    </div>
+                    <div className="text-xs text-slate-500">Nota: En Android hay que poner <b>+34</b>.</div>
+                  </div>
+                )}
+
+                {(device==='fijo' || (device==='movil' && iphone)) && (
+                  <div className="space-y-3">
+                    {device==='movil' && iphone && (
+                      <div className="mb-1 text-xs p-3 rounded-xl border bg-amber-50 text-amber-900">En iPhone, Ajustes solo permite desvío <b>siempre</b>. Para condicionales, marca los códigos USSD.</div>
+                    )}
+
+                    {installMode==='todo' ? (
+                      (()=>{ const list = ["**21*"+numForCodes+"#"]; return (
+                        <div className="space-y-3">
+                          {list.map((c,i)=> <Tile key={i} title="Desviar todas (marcar)" code={c} />)}
+                          <ol className="list-decimal pl-5 text-sm space-y-1 mt-2">
+                            <li>Descuelga / abre Teléfono y marca el código tal cual.</li>
+                            <li>Espera confirmación, cuelga y prueba llamando.</li>
+                          </ol>
+                        </div>
+                      ); })()
+                    ) : (
+                      (()=>{ const bloques = ["ocupado","no_contesta","apagado"].map((m)=>({ modalidad:m, list: (m==='ocupado')?["**67*"+numForCodes+"#"] : (m==='no_contesta')?["**61*"+numForCodes+"*"+segundos+"#"] : ["**62*"+numForCodes+"#"] })); return (
+                        <div className="space-y-4">
+                          {bloques.map((b,i)=>(
+                            <div key={i} className="space-y-2">
+                              <div className="text-sm font-semibold capitalize">{b.modalidad.replace('_',' ')}</div>
+                              {b.list.map((c,j)=> <Tile key={j} title="Marcar este código" code={c} />)}
+                            </div>
+                          ))}
+                        </div>
+                      ); })()
+                    )}
+                  </div>
+                )}
+
+                {(operator==='Movistar' || operator==='O2 (Movistar)') && (
+                  <div className="mt-3 text-xs p-3 rounded-xl border bg-blue-50 text-blue-900">
+                    Si al marcar aparece “servicio no activo”, ve al Paso 4 (Fallback) y usa el email de activación de Movistar.
+                  </div>
+                )}
+
+                <div className="flex justify-between pt-3">
+                  <button aria-label="Volver a datos" className="px-4 py-2 rounded-xl border" onClick={()=>setPaso(1)}>Volver</button>
+                  <button aria-label="Ir a verificación" className="px-4 py-2 rounded-xl bg-slate-900 text-white" onClick={()=>setPaso(3)}>Ir a verificación</button>
+                </div>
+              </div>
+            )}
+
+            {paso>=3 && (
+              <div className="rounded-2xl border bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-4"><span className="text-xs rounded-full bg-slate-900 text-white w-6 h-6 inline-flex items-center justify-center">3</span><div className="font-semibold">Verificación</div><div className="text-xs text-slate-500">(comprueba estado)</div></div>
+                {device==='movil' ? (
+                  <>
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {Object.entries(GSM.check).map(([k, code]) => (
+                        <Tile key={k} title={`Comprobar ${k.replace('_',' ')}`} code={code} />
+                      ))}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-3">Marca el código y pulsa llamada para ver el estado.</div>
+                  </>
+                ) : (
+                  <div className="text-sm text-slate-700">Haz una llamada de prueba al fijo original y confirma que suena en el asistente. Si falla, usa “Quitar desvíos” y repite.</div>
+                )}
+
+                <div className="flex justify-between pt-3">
+                  <button aria-label="Volver a activación" className="px-4 py-2 rounded-xl border" onClick={()=>setPaso(2)}>Volver</button>
+                  <button aria-label="Ir a fallback" className="px-4 py-2 rounded-xl bg-slate-900 text-white" onClick={()=>setPaso(4)}>Ir a fallback</button>
+                </div>
+              </div>
+            )}
+
+            {paso>=4 && (
+              <div className="rounded-2xl border bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-4"><span className="text-xs rounded-full bg-slate-900 text-white w-6 h-6 inline-flex items-center justify-center">4</span><div className="font-semibold">Fallback</div><div className="text-xs text-slate-500">(solo si no funcionó)</div></div>
+
+                <div className="grid md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <div className="text-sm text-slate-600 mb-2">Razón social</div>
+                    <input aria-label="Razón social" value={empresa} onChange={(e)=>setEmpresa(e.target.value)} className="w-full rounded-xl border p-2 bg-white" />
+                  </div>
+                  <div>
+                    <div className="text-sm text-slate-600 mb-2">CIF/NIF</div>
+                    <input aria-label="CIF o NIF" value={cif} onChange={(e)=>setCif(e.target.value.toUpperCase())} className="w-full rounded-xl border p-2 bg-white" />
+                  </div>
+                </div>
+
+                <div className="space-y-2 rounded-xl border p-3 bg-white">
+                  <div className="font-semibold">Movistar (Telefónica) — Alta del servicio de desvíos</div>
+                  <div className="text-sm">Si al marcar sale “servicio no activo”, envía este correo para activar <b>inmediato</b>, <b>ocupado</b> y <b>no contesta</b>.</div>
+                  <div className="text-xs">Destino: <b>asesorpersonal@telefonica.es</b> · Asunto: <b>Activar Desvíos</b></div>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-sm text-slate-600 mb-1">Dirección de la línea</div>
+                      <input aria-label="Dirección de la línea" value={dirLinea} onChange={e=>setDirLinea(e.target.value)} className="w-full rounded-xl border p-2 bg-white"/>
+                    </div>
+                  </div>
+                  <textarea className="w-full h-44 font-mono text-xs rounded-xl border p-2 bg-white">{movistarBody}</textarea>
+                  <div className="flex gap-2 justify-end">
+                    <button className="px-3 py-2 rounded-lg border" onClick={()=>copyToClipboard('asesorpersonal@telefonica.es')}>Copiar email</button>
+                    <button className="px-3 py-2 rounded-lg border" onClick={()=>copyToClipboard('Activar Desvíos')}>Copiar asunto</button>
+                    <button className="px-3 py-2 rounded-lg border" onClick={()=>copyToClipboard(movistarBody)}>Copiar cuerpo</button>
+                    <a className="px-3 py-2 rounded-lg border inline-flex items-center" href={mailHref}>Abrir correo</a>
+                  </div>
+                </div>
+
+                <div className="mt-4 text-sm">
+                  <div className="font-semibold mb-1">Plan B general</div>
+                  <ol className="list-decimal pl-5 space-y-1">
+                    <li>Quita el desvío del modo probado (arriba “Quitar desvíos”).</li>
+                    <li>Prueba la variante del operador (p. ej., Directo vs Indirecto en Orange/Jazztel).</li>
+                    <li>Si persiste, llama al operador con razón social, CIF/NIF y nº de línea para que lo activen ellos.</li>
+                  </ol>
+                </div>
+
+                <div className="flex justify-between pt-4">
+                  <button aria-label="Volver a verificación" className="px-4 py-2 rounded-xl border" onClick={()=>setPaso(3)}>Volver</button>
+                  <button aria-label="Subir arriba" className="px-4 py-2 rounded-xl" onClick={()=>window.scrollTo({top:0,behavior:'smooth'})}>Subir arriba</button>
+                </div>
+              </div>
+            )}
+
+            <div className="py-6 text-center text-xs text-slate-500">© ${new Date().getFullYear()} InfOne — "Cada llamada cuenta"</div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<Wizard/>);
+  </script>
+</body>
+</html>
