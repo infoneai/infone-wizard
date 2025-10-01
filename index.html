@@ -35,7 +35,7 @@
       on: {
         siempre: (num9) => `**21*${num9}#`,
         ocupado: (num9) => `**67*${num9}#`,
-        no_contesta: (num9, s) => `**61*${num9}*${s}#`,
+        no_contesta: (num9, s=null) => s? `**61*${num9}*${s}#` : `**61*${num9}#`,
         apagado: (num9) => `**62*${num9}#`,
       },
       check: { siempre: "*#21#", ocupado: "*#67#", no_contesta: "*#61#", apagado: "*#62#" },
@@ -100,6 +100,7 @@
       const [operator, setOperator] = React.useState("Movistar");
       const [installMode, setInstallMode] = React.useState("condicional");
       const [segundos, setSegundos] = React.useState(15);
+      const [useSegundos, setUseSegundos] = React.useState(false);
       const [nLinea9, setNLinea9] = React.useState("");
       const [nDestino9, setNDestino9] = React.useState("");
       const [empresa, setEmpresa] = React.useState("");
@@ -140,6 +141,20 @@
       const offCodes = React.useMemo(() => getOffCodes(), [device, operator]);
 
       const titulo = "InfOne · Wizard de Desvíos";
+
+      const MobileCodes = ({mode}) => {
+        const seconds = useSegundos ? segundos : null;
+        if (mode === 'todo') {
+          return <Tile title={`Móvil — ${operator} (desvío siempre)`} code={GSM.on.siempre(numForCodes)} />;
+        }
+        return (
+          <div className="space-y-2">
+            <Tile title={`Móvil — ${operator} (si ocupado)`} code={GSM.on.ocupado(numForCodes)} />
+            <Tile title={`Móvil — ${operator} (si no contesta${useSegundos?' · '+seconds+'s':''})`} code={GSM.on.no_contesta(numForCodes, seconds)} />
+            <Tile title={`Móvil — ${operator} (si apagado/fuera cobertura)`} code={GSM.on.apagado(numForCodes)} />
+          </div>
+        );
+      };
 
       return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 text-slate-900 p-6">
@@ -196,14 +211,6 @@
                   </div>
                 </div>
 
-                {installMode==='condicional' && (
-                  <div>
-                    <div className="text-sm text-slate-600 mb-2">Segundos “no contesta”</div>
-                    <input aria-label="Segundos no contesta" type="number" min={5} max={30} step={5} value={segundos} onChange={(e)=>setSegundos(Number(e.target.value)||15)} className="w-32 rounded-xl border p-2 bg-white" />
-                    <div className="text-xs text-slate-500 mt-1">Recomendado: 15–20s</div>
-                  </div>
-                )}
-
                 <div>
                   <div className="text-sm text-slate-600 mb-2">Nº de línea del cliente (opcional)</div>
                   <div className={`flex rounded-xl border overflow-hidden ${nLinea9 && !isNine(nLinea9)?'border-red-500':'border-slate-300'}`}>
@@ -243,7 +250,7 @@
                 <div className="flex items-center gap-2 mb-4"><span className="text-xs rounded-full bg-slate-900 text-white w-6 h-6 inline-flex items-center justify-center">2</span><div className="font-semibold">Activación</div><div className="text-xs text-slate-500">(marca códigos o configura en Ajustes)</div></div>
 
                 {device==='movil' && !iphone && (
-                  <div className="space-y-3 text-sm">
+                  <div className="space-y-4 text-sm">
                     <div className="p-3 rounded-xl border bg-slate-50">
                       <div className="font-semibold mb-1">Android — Ajustes del teléfono</div>
                       <ol className="list-decimal pl-5 space-y-1">
@@ -259,19 +266,72 @@
                         )}
                         <li>Guarda y haz una llamada de prueba.</li>
                       </ol>
+                      <div className="text-xs text-slate-500 mt-2">Nota: En Android hay que poner <b>+34</b>. Este método no permite configurar segundos.</div>
                     </div>
-                    <div className="text-xs text-slate-500">Nota: En Android hay que poner <b>+34</b>.</div>
+
+                    <div className="p-3 rounded-xl border bg-white">
+                      <div className="font-semibold mb-1">¿No funciona por Ajustes? — Marca los códigos móviles por operador</div>
+                      <div className="text-xs text-slate-600 mb-2">Todos los operadores móviles usan <b>GSM</b> (códigos universales). Si tu línea soporta VoIP y quieres ajustar los tonos de "no contesta", marca la casilla de abajo.</div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <input id="voip" type="checkbox" checked={useSegundos} onChange={(e)=>setUseSegundos(e.target.checked)} />
+                        <label for="voip" className="text-sm">Configurar segundos en "no contesta" (VoIP / poco común)</label>
+                        {useSegundos && (
+                          <div className="flex items-center gap-2 ml-4">
+                            <span className="text-sm">Segundos</span>
+                            <input type="number" min="5" max="30" step="5" value={segundos} onChange={(e)=>setSegundos(Number(e.target.value)||15)} className="w-20 rounded-xl border p-1" />
+                          </div>
+                        )}
+                      </div>
+                      {installMode==='todo' ? (
+                        <div><Tile title={`Móvil — ${operator} (desvío siempre)`} code={`**21*${numForCodes}#`} /></div>
+                      ) : (
+                        <div className="space-y-2">
+                          <Tile title={`Móvil — ${operator} (si ocupado)`} code={`**67*${numForCodes}#`} />
+                          <Tile title={`Móvil — ${operator} (si no contesta${useSegundos?' · '+segundos+'s':''})`} code={useSegundos?`**61*${numForCodes}*${segundos}#`:`**61*${numForCodes}#`} />
+                          <Tile title={`Móvil — ${operator} (si apagado/fuera cobertura)`} code={`**62*${numForCodes}#`} />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
                 {(device==='fijo' || (device==='movil' && iphone)) && (
                   <div className="space-y-3">
                     {device==='movil' && iphone && (
-                      <div className="mb-1 text-xs p-3 rounded-xl border bg-amber-50 text-amber-900">En iPhone, Ajustes solo permite desvío <b>siempre</b>. Para condicionales, marca los códigos USSD.</div>
+                      <div className="mb-1 text-xs p-3 rounded-xl border bg-amber-50 text-amber-900">En iPhone, Ajustes solo permite desvío <b>siempre</b>. Para condicionales, marca los códigos USSD (abajo puedes activar segundos VoIP si procede).</div>
+                    )}
+
+                    {device==='movil' && (
+                      <div className="p-3 rounded-xl border bg-white">
+                        <div className="font-semibold mb-1">Códigos móviles por operador</div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <input id="voip2" type="checkbox" checked={useSegundos} onChange={(e)=>setUseSegundos(e.target.checked)} />
+                          <label for="voip2" className="text-sm">Configurar segundos en "no contesta" (VoIP / poco común)</label>
+                          {useSegundos && (
+                            <div className="flex items-center gap-2 ml-4">
+                              <span className="text-sm">Segundos</span>
+                              <input type="number" min="5" max="30" step="5" value={segundos} onChange={(e)=>setSegundos(Number(e.target.value)||15)} className="w-20 rounded-xl border p-1" />
+                            </div>
+                          )}
+                        </div>
+                        {installMode==='todo' ? (
+                          <div><Tile title={`Móvil — ${operator} (desvío siempre)`} code={`**21*${numForCodes}#`} /></div>
+                        ) : (
+                          <div className="space-y-2">
+                            <Tile title={`Móvil — ${operator} (si ocupado)`} code={`**67*${numForCodes}#`} />
+                            <Tile title={`Móvil — ${operator} (si no contesta${useSegundos?' · '+segundos+'s':''})`} code={useSegundos?`**61*${numForCodes}*${segundos}#`:`**61*${numForCodes}#`} />
+                            <Tile title={`Móvil — ${operator} (si apagado/fuera cobertura)`} code={`**62*${numForCodes}#`} />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {device==='fijo' && (
+                      <div className="text-sm text-slate-700">Para fijo usa los códigos que ves abajo (PSTN/VoIP). “No contesta” no usa segundos en PSTN.</div>
                     )}
 
                     {installMode==='todo' ? (
-                      (()=>{ const list = ["**21*"+numForCodes+"#"]; return (
+                      (()=>{ const list = device==='movil' ? [`**21*${numForCodes}#`] : [`*21*${numForCodes}#`]; return (
                         <div className="space-y-3">
                           {list.map((c,i)=> <Tile key={i} title="Desviar todas (marcar)" code={c} />)}
                           <ol className="list-decimal pl-5 text-sm space-y-1 mt-2">
@@ -281,7 +341,7 @@
                         </div>
                       ); })()
                     ) : (
-                      (()=>{ const bloques = ["ocupado","no_contesta","apagado"].map((m)=>({ modalidad:m, list: (m==='ocupado')?["**67*"+numForCodes+"#"] : (m==='no_contesta')?["**61*"+numForCodes+"*"+segundos+"#"] : ["**62*"+numForCodes+"#"] })); return (
+                      (()=>{ const bloques = ["ocupado","no_contesta","apagado"].map((m)=>({ modalidad:m, list: (m==='ocupado')?[(device==='movil'?`**67*${numForCodes}#`:`*67*${numForCodes}#`)] : (m==='no_contesta')?[(device==='movil'? (useSegundos?`**61*${numForCodes}*${segundos}#`:`**61*${numForCodes}#`) : `*61*${numForCodes}#`)] : [(device==='movil'?`**62*${numForCodes}#`:`*62*${numForCodes}#`)] })); return (
                         <div className="space-y-4">
                           {bloques.map((b,i)=>(
                             <div key={i} className="space-y-2">
@@ -356,11 +416,29 @@
                       <input aria-label="Dirección de la línea" value={dirLinea} onChange={e=>setDirLinea(e.target.value)} className="w-full rounded-xl border p-2 bg-white"/>
                     </div>
                   </div>
-                  <textarea className="w-full h-44 font-mono text-xs rounded-xl border p-2 bg-white">{movistarBody}</textarea>
+                  <textarea className="w-full h-44 font-mono text-xs rounded-xl border p-2 bg-white">{`Buenos días,
+
+¿Serían tan amables de dar de alta el servicio de desvío de llamadas inmediato, ocupado y no contesta en la Línea telefónica ${numLinea || "[NÚMERO DEL CLIENTE A DESVIAR]"} ?
+
+Los datos de la empresa son los siguientes:
+- Denominación social: ${empresa || "[RAZÓN SOCIAL / NOMBRE SI AUTÓNOMO]"} 
+- CIF: ${cif || "[BXXXXXXXXX]"} 
+- Dirección: ${dirLinea || "[DIRECCIÓN DE LA LÍNEA TELEFÓNICA]"}
+
+Gracias y quedo a la espera,`}</textarea>
                   <div className="flex gap-2 justify-end">
                     <button className="px-3 py-2 rounded-lg border" onClick={()=>copyToClipboard('asesorpersonal@telefonica.es')}>Copiar email</button>
                     <button className="px-3 py-2 rounded-lg border" onClick={()=>copyToClipboard('Activar Desvíos')}>Copiar asunto</button>
-                    <button className="px-3 py-2 rounded-lg border" onClick={()=>copyToClipboard(movistarBody)}>Copiar cuerpo</button>
+                    <button className="px-3 py-2 rounded-lg border" onClick={()=>copyToClipboard(`Buenos días,
+
+¿Serían tan amables de dar de alta el servicio de desvío de llamadas inmediato, ocupado y no contesta en la Línea telefónica ${numLinea || "[NÚMERO DEL CLIENTE A DESVIAR]"} ?
+
+Los datos de la empresa son los siguientes:
+- Denominación social: ${empresa || "[RAZÓN SOCIAL / NOMBRE SI AUTÓNOMO]"} 
+- CIF: ${cif || "[BXXXXXXXXX]"} 
+- Dirección: ${dirLinea || "[DIRECCIÓN DE LA LÍNEA TELEFÓNICA]"}
+
+Gracias y quedo a la espera,`)}>Copiar cuerpo</button>
                     <a className="px-3 py-2 rounded-lg border inline-flex items-center" href={mailHref}>Abrir correo</a>
                   </div>
                 </div>
@@ -381,7 +459,7 @@
               </div>
             )}
 
-            <div className="py-6 text-center text-xs text-slate-500">© ${new Date().getFullYear()} InfOne — "Cada llamada cuenta"</div>
+            <div className="py-6 text-center text-xs text-slate-500">© 2025 InfOne — "Cada llamada cuenta"</div>
           </div>
         </div>
       );
